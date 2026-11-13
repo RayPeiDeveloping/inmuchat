@@ -501,6 +501,49 @@
   .fx-image-wrap.in { animation: fxFadeIn 3s ease-out forwards; }
   .fx-image-wrap.out { animation: fxFadeOut 3s ease-in forwards; }
   .fx-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+  /* 特殊演出：目の動きは JS が毎フレーム決めるので、なめらかにする補間は切る */
+  .fx-image-wrap.searching .fx-pupil { transition: none; }
+  .fx-image-wrap.found {
+    opacity: 1;
+    animation: fxLunge 2.6s ease-in forwards;
+  }
+  .fx-image-wrap.found .fx-image { filter: drop-shadow(0 0 18px rgba(255,0,0,0.85)); }
+  .fx-image-wrap.found .fx-eye {
+    background: #ffd2d2;
+    box-shadow: 0 0 22px 10px rgba(255,0,0,0.95), 0 0 60px 24px rgba(255,0,0,0.55);
+  }
+  @keyframes fxLunge { from { scale: 1; } to { scale: 1.5; } }
+  /* メッセージが「スッと消えて」「ボワーっと戻る」 */
+  .messages { transition: opacity 2.6s ease, filter 2.6s ease; }
+  .messages.fx-chat-hidden { opacity: 0; filter: blur(8px); pointer-events: none; transition: opacity 1.2s ease, filter 1.2s ease; }
+  .fx-pass {
+    position: absolute; top: 8px; right: 10px; z-index: 4;
+    padding: 3px 10px; border-radius: 10px;
+    background: rgba(0,0,0,0.45); color: #fff;
+    font-family: var(--font-head); font-size: 12px; font-weight: 800;
+    pointer-events: none;
+  }
+  .fx-red {
+    position: fixed; inset: -30px; z-index: 900; pointer-events: none;
+    background: radial-gradient(circle at 50% 46%, rgba(255,0,0,0) 8%, rgba(190,0,0,0.7) 100%);
+    animation: fxRedPulse 0.3s ease-in-out infinite alternate;
+  }
+  @keyframes fxRedPulse { from { opacity: 0.35; } to { opacity: 1; } }
+  .fx-over {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #000; color: #c40000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    animation: fxOverIn 1.4s ease-out both;
+  }
+  @keyframes fxOverIn { from { opacity: 0; } to { opacity: 1; } }
+  .fx-over-title { font-family: var(--font-head); font-size: 34px; font-weight: 800; letter-spacing: 0.08em; text-shadow: 0 0 14px rgba(255,0,0,0.7); }
+  .fx-over-count { font-family: var(--font-head); font-size: 18px; font-weight: 700; color: #a88; }
+  .fx-over-btn {
+    margin-top: 10px; padding: 12px 28px; border-radius: 12px;
+    border: 2px solid #8a0000; background: transparent; color: #e44;
+    font-family: var(--font-head); font-size: 16px; font-weight: 800; cursor: pointer;
+  }
+  .fx-over-btn:active { background: #2a0000; }
   .fx-eye {
     position: absolute;
     aspect-ratio: 1;
@@ -709,8 +752,22 @@ const FX_IMAGE_FADE_MS = 3000;       // 画像が薄れて消えるまでの時�
 const FX_BANNER_MS = 6000;           // バナーが出ている時間
 const FX_EYES = [{ x: 52, y: 50 }, { x: 75, y: 50 }]; // 目の位置（画像の左上から何%か）
 const FX_EYE_SIZE = 13;              // 目の大きさ（画像の幅に対する%）
-const FX_EYE_MIN_MS = 800;           // キョロキョロの間隔（短いほう）
-const FX_EYE_MAX_MS = 2800;          // キョロキョロの間隔（長いほう）
+const FX_EYE_FAST_MS = [250, 600];   // 出てきた直後のキョロキョロの間隔（最短, 最長）
+const FX_EYE_SLOW_MS = [1500, 3500]; // ゆっくりになったあとの間隔（最短, 最長）
+const FX_EYE_RAMP_MS = 45000;        // 速い→ゆっくりに変わるまでの時間
+
+// ===== 画像が出ている間にもう一度ワードを言ったときの特殊演出 =====
+const FX_FIND_BASE = 0.2;            // 見つかる確率（通過数0のとき）
+const FX_FIND_STEP = 0.03;           // 通過数が1増えるごとに足す確率（10回で50%）
+const FX_FIND_MAX = 0.5;             // 見つかる確率の上限
+const FX_FREEZE_MS = 1500;           // 目の向きが固定され、メッセージが消えていく時間
+const FX_APPROACH_MS = 7000;         // 目がゆっくりこちらを向いていく時間（揺れも強くなる）
+const FX_SHAKE_MAX = 7;              // 画面の揺れ（px）。こちらを向く直前が最大
+const FX_SLIDE_MS = 450;             // 見つからなかったとき、目が反対側へ滑っていく時間
+const FX_CALM_MS = 900;              // そのあと揺れが収まるまでの時間
+const FX_FOUND_MS = 2600;            // 見つかったとき、赤く光ってから暗転するまでの時間
+const FX_FOUND_SHAKE = 16;           // 見つかったときの揺れ（px）
+const FX_PASS_KEY = "inmu_pass_";    // 通過数の保存キー（ルームごとの値が後ろにつく）
 
 // 1文字を比べやすい形にそろえる（全角半角・大文字小文字・カタカナ→ひらがな）
 function fxNormUnit(s) {
@@ -1125,34 +1182,141 @@ function WordListRoom({ name, room, onLeave }) {
   const [fxImg, setFxImg] = useState("off");    // "off" | "in" | "out"
   const [fxRatio, setFxRatio] = useState(1);     // 画像の 幅÷高さ
   const [eyeLook, setEyeLook] = useState(1);     // 目線：-1 左 / 1 右
+  const [fxSearching, setFxSearching] = useState(false); // 特殊演出の最中（キョロキョロを止める）
+  const [fxHideChat, setFxHideChat] = useState(false);   // メッセージを消している間
+  const [fxFound, setFxFound] = useState(false);         // 見つかった（赤く光る）
+  const [fxOver, setFxOver] = useState(null);            // ゲームオーバー画面 { count }
+  const [passCount, setPassCount] = useState(() => {     // 通過数（ルームごとに数える）
+    try { return Math.max(0, parseInt(localStorage.getItem(FX_PASS_KEY + topic), 10) || 0); } catch (e) { return 0; }
+  });
+  const fxImgRef = useRef("off"); fxImgRef.current = fxImg;
+  const eyeLookRef = useRef(1); eyeLookRef.current = eyeLook;
+  const passRef = useRef(passCount); passRef.current = passCount;
+  const fxBusyRef = useRef(false);   // 特殊演出の最中
+  const fxRafRef = useRef(0);
+  const fxWrapRef = useRef(null);
+  const searchRef = useRef(null);
   const fxShown = fxImg !== "off";
   useEffect(() => {
-    if (!fxShown) return;
+    if (!fxShown || fxSearching) return;
     let timer;
+    const startedAt = Date.now();
+    const nextDelay = () => {
+      const p = Math.min(1, (Date.now() - startedAt) / FX_EYE_RAMP_MS); // 0=出た直後 → 1=ゆっくり
+      const lo = FX_EYE_FAST_MS[0] + (FX_EYE_SLOW_MS[0] - FX_EYE_FAST_MS[0]) * p;
+      const hi = FX_EYE_FAST_MS[1] + (FX_EYE_SLOW_MS[1] - FX_EYE_FAST_MS[1]) * p;
+      return lo + Math.random() * (hi - lo);
+    };
     const tick = () => {
       setEyeLook((d) => (Math.random() < 0.75 ? -d : d)); // たいてい反対側を見る。ときどき同じ側のまま
-      timer = setTimeout(tick, FX_EYE_MIN_MS + Math.random() * (FX_EYE_MAX_MS - FX_EYE_MIN_MS));
+      timer = setTimeout(tick, nextDelay());
     };
-    timer = setTimeout(tick, 600 + Math.random() * 1000);
+    timer = setTimeout(tick, nextDelay());
     return () => clearTimeout(timer);
-  }, [fxShown]);
+  }, [fxShown, fxSearching]);
   const fxTimersRef = useRef({});
-  useEffect(() => () => { Object.values(fxTimersRef.current).forEach(clearTimeout); }, []);
-  const triggerFx = useCallback((id, hit) => {
+  useEffect(() => () => {
+    Object.values(fxTimersRef.current).forEach(clearTimeout);
+    cancelAnimationFrame(fxRafRef.current);
+    const root = document.getElementById("app-root");
+    if (root) root.style.transform = "";
+  }, []);
+  // 画像を60秒出して、そのあと薄れて消す（数え直すときもここを通る）
+  const armImgHold = useCallback(() => {
     const t = fxTimersRef.current;
-    setGlowMap((prev) => ({ ...prev, [id]: hit.ranges }));
-    // バナー：引っかかったワード全体を、少しのあいだ上に出す
-    setFxBanner({ key: Date.now() + Math.random(), words: hit.words });
-    clearTimeout(t.banner);
-    t.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
-    // 画像：ゆっくり出てきて、60秒たつと薄れて消える。出ている間にまた引っかかったら、60秒を数え直す
-    setFxImg("in");
     clearTimeout(t.imgOut); clearTimeout(t.imgOff);
     t.imgOut = setTimeout(() => {
       setFxImg("out");
       t.imgOff = setTimeout(() => setFxImg("off"), FX_IMAGE_FADE_MS);
     }, FX_IMAGE_HOLD_MS);
   }, []);
+  const savePass = (n) => {
+    passRef.current = n;
+    setPassCount(n);
+    try {
+      if (n > 0) localStorage.setItem(FX_PASS_KEY + topic, String(n));
+      else localStorage.removeItem(FX_PASS_KEY + topic);
+    } catch (e) {}
+  };
+  // 画像が出ている間にもう一度ワードを言われたときの特殊演出
+  searchRef.current = () => {
+    if (fxBusyRef.current) return;
+    fxBusyRef.current = true;
+    const t = fxTimersRef.current;
+    clearTimeout(t.imgOut); clearTimeout(t.imgOff); // 画像は演出が終わるまで消さない
+    const n = passRef.current;
+    const found = Math.random() < Math.min(FX_FIND_MAX, FX_FIND_BASE + FX_FIND_STEP * n);
+    const d = eyeLookRef.current >= 0 ? 1 : -1;      // 固定する向き
+    const root = document.getElementById("app-root");
+    // 毎フレーム動かすものは state を通さず、直接書き換える（再描画を避ける）
+    const setLook = (v) => { const w = fxWrapRef.current; if (w) w.style.setProperty("--look", String(v)); };
+    const shake = (amp) => {
+      if (!root) return;
+      root.style.transform = amp > 0.2
+        ? `translate(${((Math.random() * 2 - 1) * amp).toFixed(1)}px, ${((Math.random() * 2 - 1) * amp).toFixed(1)}px)`
+        : "";
+    };
+    setFxSearching(true); setFxHideChat(true); setFxFound(false);
+    setLook(d);
+    const A = FX_FREEZE_MS + FX_APPROACH_MS;
+    const t0 = performance.now();
+    let foundShown = false, restored = false;
+    const frame = (now) => {
+      const e = now - t0;
+      if (e < FX_FREEZE_MS) {
+        setLook(d);                                   // 目の向きを固定
+      } else if (e < A) {
+        const p = (e - FX_FREEZE_MS) / FX_APPROACH_MS; // 0→1：ゆっくりこちらへ
+        setLook(d * (1 - Math.pow(p, 1.5)));
+        shake(FX_SHAKE_MAX * p * p);
+      } else if (found) {
+        setLook(0);                                   // 目が合う
+        if (!foundShown) { foundShown = true; setFxFound(true); }
+        if (e < A + FX_FOUND_MS) {
+          shake(FX_FOUND_SHAKE);
+        } else {
+          shake(0);
+          setFxOver({ count: passRef.current });      // ゲームオーバー（通過数は表示してから0に戻す）
+          savePass(0);
+          return;
+        }
+      } else {
+        const s = Math.min(1, (e - A) / FX_SLIDE_MS); // スンッと反対側へ
+        setLook(-d * (1 - Math.pow(1 - s, 3)));
+        const c = Math.min(1, (e - A) / (FX_SLIDE_MS + FX_CALM_MS));
+        shake(FX_SHAKE_MAX * (1 - c));
+        if (s >= 1 && !restored) { restored = true; setFxHideChat(false); } // ボワーっとチャットが戻る
+        if (c >= 1) {
+          shake(0);
+          savePass(passRef.current + 1);
+          eyeLookRef.current = -d;
+          setEyeLook(-d);
+          fxBusyRef.current = false;
+          setFxSearching(false);
+          armImgHold();
+          return;
+        }
+      }
+      fxRafRef.current = requestAnimationFrame(frame);
+    };
+    fxRafRef.current = requestAnimationFrame(frame);
+  };
+  const triggerFx = useCallback((id, hit) => {
+    const t = fxTimersRef.current;
+    setGlowMap((prev) => ({ ...prev, [id]: hit.ranges }));
+    if (fxBusyRef.current) return;                      // 特殊演出の最中は、何も足さない
+    if (fxImgRef.current === "in" && searchRef.current) { // 画像が出ている間にもう一度 → 特殊演出
+      searchRef.current();
+      return;
+    }
+    // バナー：引っかかったワード全体を、少しのあいだ上に出す
+    setFxBanner({ key: Date.now() + Math.random(), words: hit.words });
+    clearTimeout(t.banner);
+    t.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
+    // 画像：ゆっくり出てきて、60秒たつと薄れて消える。出ている間にまた引っかかったら、60秒を数え直す
+    setFxImg("in");
+    armImgHold();
+  }, [armImgHold]);
 
   // Realtime Database の1件（メッセージ）を表示用に変換して state に入れる。
   // 履歴の読み込みと新着の受信で同じ処理を使う。
@@ -1913,10 +2077,20 @@ function WordListRoom({ name, room, onLeave }) {
         </div>
       )}
 
+      {fxFound && !fxOver && <div className="fx-red" />}
+      {fxOver && (
+        <div className="fx-over">
+          <div className="fx-over-title">ゲームオーバー…</div>
+          <div className="fx-over-count">通過数　{fxOver.count}</div>
+          <button className="fx-over-btn" onClick={onLeave}>タイトルに戻る</button>
+        </div>
+      )}
+
       <div className="messages-wrap">
+      <div className="fx-pass">通過数　{passCount}</div>
       <div className="fx-layer">
         {fxImg !== "off" && (
-          <div className={`fx-image-wrap ${fxImg}`} style={{ "--r": fxRatio, "--look": eyeLook }}>
+          <div ref={fxWrapRef} className={`fx-image-wrap ${fxImg}${fxSearching ? " searching" : ""}${fxFound ? " found" : ""}`} style={{ "--r": fxRatio, "--look": eyeLook }}>
             <img className="fx-image" src={FX_IMAGE_SRC} alt=""
               onLoad={(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setFxRatio(w / h); }}
               onError={(e) => { e.currentTarget.parentNode.style.display = "none"; }} />
@@ -1928,7 +2102,7 @@ function WordListRoom({ name, room, onLeave }) {
           </div>
         )}
       </div>
-      <div className="messages" ref={messagesRef}
+      <div className={`messages${fxHideChat ? " fx-chat-hidden" : ""}`} ref={messagesRef}
         onScroll={() => {
           const el = messagesRef.current;
           if (el) {
