@@ -811,13 +811,21 @@ const TRIGGER_WORDS = [
   "ま、多少はね？",
   "MURさん夜中腹減んないすか？",
   "見とけよ見とけよ～",
-  "More precious 気持ちよくなっちゃう。もういいよ、ヤバイヤバイ。",
+  "More precious",
+  "気持ちよくなっちゃう。もういいよ、ヤバイヤバイ。",
   "焼く時は！",
   "やめたくなりますよなんか部っ活ぅ～",
   "やりますねぇ！",
   "やんほぬ",
-  "You have a 夜中腹減んないすか？",
+  "ありがとナス",
+  "You have a",
+  "夜中腹減んないすか？",
 ];
+// 判定に使う部分だけを別に指定したいワード（左：リストのワード → 右：実際に判定する文字列）。
+// バナーにはリストのワードがそのまま出る。光るのは判定に使った部分だけ。
+const FX_MATCH_ONLY = {
+  "ありがとナス": "とナス",
+};
 const FX_IMAGE_SRC = "IMG_8051.png"; // index.html と同じフォルダに置く
 const FX_MATCH_LEN = 3;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
 const FX_IMAGE_HOLD_MS = 60000;      // 画像が出ている時間（このあと薄れて消える）
@@ -923,7 +931,7 @@ function fxMatch(text, wordList) {
   const marks = new Array(msg.length).fill(false);
   const hitWords = [];
   for (const word of list) {
-    const w = fxNormalize(word).map((x) => x.ch);
+    const w = fxNormalize(FX_MATCH_ONLY[word] || word).map((x) => x.ch);
     if (!w.length) continue;
     const need = Math.min(FX_MATCH_LEN, w.length);
     let hit = false;
