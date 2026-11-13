@@ -471,12 +471,17 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    background: var(--cream);
+    /* アイコンと同じ3分割の背景（円なし）。中心から真上・右下・左下へ区切る */
+    background: conic-gradient(from 0deg at 50% 50%,
+      #C9BFB6 0deg 120deg,
+      #3E343F 120deg 240deg,
+      #979F9B 240deg 360deg);
   }
   .msg { display: flex; flex-direction: column; max-width: 80%; }
+  .msg.cont { margin-top: -5px; }
   .msg.mine { align-self: flex-end; align-items: flex-end; }
   .msg.theirs { align-self: flex-start; align-items: flex-start; }
-  .msg-sender { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); margin: 0 6px 3px; }
+  .msg-sender { font-size: 11.5px; font-weight: 700; color: var(--ink); margin: 0 6px 3px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,0.82); }
   .msg-line { display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
   .msg.mine .msg-line { flex-direction: row-reverse; }
   .msg-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -492,7 +497,7 @@
   }
   .msg.mine .msg-bubble { background: var(--sky); color: #fff; border-bottom-right-radius: 6px; }
   .msg.theirs .msg-bubble { background: #fff; color: var(--ink); border-bottom-left-radius: 6px; }
-  .msg-time { flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--ink-soft); }
+  .msg-time { flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--ink); padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.82); }
   .msg-photo {
     display: block;
     max-width: 100%;
@@ -510,10 +515,17 @@
     color: var(--ink-soft);
   }
 
+  .messages .empty-state {
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.88);
+    color: var(--ink);
+  }
+
   .composer {
     flex: 0 0 auto;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     padding: 8px 10px;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
@@ -523,15 +535,20 @@
   .composer-input {
     flex: 1;
     min-width: 0;
-    padding: 10px 14px;
+    padding: 9px 14px;
     border: none;
     border-radius: 20px;
     background: var(--cream);
     font-family: var(--font-body);
     font-weight: 600;
     font-size: 16px;
+    line-height: 20px;
     color: var(--ink);
     outline: none;
+    resize: none;
+    overflow-y: auto;
+    max-height: 120px;
+    display: block;
   }
   .composer-input::placeholder { color: #a3a8b8; }
   .composer-input:disabled { opacity: 0.7; }
@@ -1536,6 +1553,15 @@ function WordListRoom({ name, room, onLeave }) {
     );
   };
 
+  // 入力欄は文章に合わせて自動で高さが伸びる（端まで来たら折り返し、上限を超えたら中でスクロール）
+  const composerRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, [draft]);
+
   const handleSend = async () => {
     const text = draft.trim();
     if (!text || sending) return;
@@ -1689,12 +1715,16 @@ function WordListRoom({ name, room, onLeave }) {
             まだメッセージがありません。<br/>最初のメッセージを送ってみましょう。
           </div>
         )}
-        {messages !== null && messages.map((m) => {
+        {messages !== null && messages.map((m, i) => {
           const mine = m.sender === name;
           const expired = m.photo && m.photo.expires && m.photo.expires < Date.now();
+          // 同じ人の連続発言は名前を省略し、前の発言から時間が空いたら（5分以上）また名前を出す
+          const prev = i > 0 ? messages[i - 1] : null;
+          const gapMs = prev && prev.ts && m.ts ? m.ts - prev.ts : 0;
+          const cont = !!prev && prev.sender === m.sender && gapMs < 5 * 60 * 1000;
           return (
-            <div key={m.id} className={`msg ${mine ? "mine" : "theirs"}`}>
-              {!mine && <div className="msg-sender">{m.sender}</div>}
+            <div key={m.id} className={`msg ${mine ? "mine" : "theirs"}${cont ? " cont" : ""}`}>
+              {!mine && !cont && <div className="msg-sender">{m.sender}</div>}
               <div className="msg-line">
                 <div className="msg-content">
                   {m.text && <div className="msg-bubble">{m.text}</div>}
@@ -1722,10 +1752,9 @@ function WordListRoom({ name, room, onLeave }) {
           onClick={() => fileInputRef.current && fileInputRef.current.click()}>📷</button>
         <input ref={fileInputRef} type="file" accept="image/*"
           style={{ display: "none" }} onChange={handlePickPhoto} />
-        <input className="composer-input" type="text" placeholder="メッセージを入力" value={draft}
+        <textarea ref={composerRef} className="composer-input" rows={1} placeholder="メッセージを入力" value={draft}
           disabled={sending}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSend(); }}
           maxLength={500} />
         <button className="send-btn" disabled={sending || !draft.trim()} onClick={handleSend}>➤</button>
       </div>
