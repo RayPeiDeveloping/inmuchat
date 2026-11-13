@@ -744,7 +744,80 @@ function blobToDataUrl(blob) {
 
 // ===== 特定のワードで演出（画像・バナー・光）=====
 // ここに判定したいワードを並べる。例: const TRIGGER_WORDS = ["ワードA", "ワードB"];
-const TRIGGER_WORDS = ["イキスギィ！"];
+const TRIGGER_WORDS = [
+  "ｱｰｲｷｿ",
+  "頭にきますよ",
+  "ありますあります",
+  "いいねぇー",
+  "いいよ、来いよ！胸にかけて！胸に！",
+  "イキスギィ！",
+  "いきますよーいくいく",
+  "行きませんか？行きましょうよ",
+  "痛いですね…これは痛い",
+  "オイル塗ろっか？",
+  "王道を征く",
+  "おかのした",
+  "オッスお願いしまーす！",
+  "おっ大丈夫か大丈夫か？",
+  "お前さKMRさ、さっきヌッ…脱ぎ終わった時にさ、なかなか風呂来なかったよな？",
+  "お前どう？",
+  "お前のことが好きだったんだよ！",
+  "おまたせ！アイスティーしかなかったけどいいかな？",
+  "俺もやったんだからさ",
+  "菅野美穂",
+  "気持ちよくなっちゃう、ヤバイヤバイ",
+  "今日タァイムはどう？伸びた？伸びない？",
+  "†悔い改めて†",
+  "ｸｩｰﾝ...",
+  "クチアケーナ・ホラ",
+  "こ、去年ですね",
+  "こ↑こ↓",
+  "この辺がセクシー…エロいッ！",
+  "この辺にぃ、うまいラーメン屋の屋台、来てるらしいっすよ",
+  "これもうわかんねぇな",
+  "しかし、修行やってます。いつの日か世界を救うと信じて。",
+  "じゃあ俺が勃たしてやるか！",
+  "じゃけん夜行きましょうね～",
+  "しょうがねぇなぁ（悟空）",
+  "そして天は鳴き、大地は震えるだろうね",
+  "大会近いからね、しょうがないね",
+  "だいぶ溜まってんじゃんアゼルバイジャン",
+  "多少はね？",
+  "出そうと思えば",
+  "ダメみたいですね",
+  "ちょっと歯ぁ当たんよ～（指摘）",
+  "であることを意味していますよねぇ",
+  "で、出ますよ…",
+  "ないです",
+  "24歳、学生です",
+  "ヌッ！",
+  "ぬわあああああん疲れたもおおおおおん",
+  "喉渇いた…喉渇かない？",
+  "伸びた？伸びない？",
+  "入って、どうぞ！",
+  "白菜かけますね",
+  "はっきりわかんだね",
+  "バッチェ冷えてますよ",
+  "He didn't…he begin…",
+  "ビール！ビール！",
+  "ピトン…ポチョン…（明鏡止水）",
+  "ファッ⁉",
+  "Foo↑気持ちぃ～",
+  "ふたいたい",
+  "ブッチッパ！",
+  "ほらいくどー",
+  "ホラガイのホラガイ",
+  "まずうちさぁ、屋上…あんだけど、焼いてかない？",
+  "ま、多少はね？",
+  "MURさん夜中腹減んないすか？",
+  "見とけよ見とけよ～",
+  "More precious 気持ちよくなっちゃう。もういいよ、ヤバイヤバイ。",
+  "焼く時は！",
+  "やめたくなりますよなんか部っ活ぅ～",
+  "やりますねぇ！",
+  "やんほぬ",
+  "You have a 夜中腹減んないすか？",
+];
 const FX_IMAGE_SRC = "IMG_8051.png"; // index.html と同じフォルダに置く
 const FX_MATCH_LEN = 3;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
 const FX_IMAGE_HOLD_MS = 60000;      // 画像が出ている時間（このあと薄れて消える）
@@ -767,7 +840,52 @@ const FX_SLIDE_MS = 450;             // 見つからなかったとき、目が�
 const FX_CALM_MS = 900;              // そのあと揺れが収まるまでの時間
 const FX_FOUND_MS = 2600;            // 見つかったとき、赤く光ってから暗転するまでの時間
 const FX_FOUND_SHAKE = 16;           // 見つかったときの揺れ（px）
-const FX_PASS_KEY = "inmu_pass_";    // 通過数の保存キー（ルームごとの値が後ろにつく）
+const FX_LOCAL_KEY = "inmu_fx_";     // みんなで共有できないとき（ルール未設定など）の、この端末だけの保存キー
+
+// この端末だけで動かすときの保存・読み込み
+function fxLocalLoad(topic) {
+  try {
+    const v = JSON.parse(localStorage.getItem(FX_LOCAL_KEY + topic) || "null");
+    return v && typeof v === "object" ? v : {};
+  } catch (e) { return {}; }
+}
+function fxLocalSave(topic, st) {
+  try { localStorage.setItem(FX_LOCAL_KEY + topic, JSON.stringify(st)); } catch (e) {}
+}
+
+// 演出の「共有の状態」を、メッセージ1件ぶん進める。
+// cur = { pass, used:[引っかかったワード], imgUntil:画像が出ている期限, busyUntil:特殊演出の終わり, ev:最後の出来事 }
+// 返すのは新しい状態。何も起きないときは undefined（データベースの transaction では「書き込まない」の意味）。
+// 起きた出来事は ev に入り、みんなの画面がこれを見て同じ演出を始める。
+function fxReduce(cur, msgId, text, now) {
+  const c = cur || {};
+  if (c.ev && c.ev.id === msgId) return;           // このメッセージは、もう誰かが処理した
+  if ((c.busyUntil || 0) > now) return;            // 特殊演出の最中は、何も数えない
+  const used = Array.isArray(c.used) ? c.used : (c.used ? Object.values(c.used) : []);
+  const hit = fxMatch(text, TRIGGER_WORDS.filter((w) => !used.includes(w)));
+  if (!hit) return;
+  const pass = c.pass || 0;
+  if ((c.imgUntil || 0) <= now) {                  // 画像が出ていない → 画像を出す
+    return {
+      pass, used: used.concat(hit.words), imgUntil: now + FX_IMAGE_HOLD_MS, busyUntil: 0,
+      ev: { id: msgId, kind: "image", t: now, w: hit.words },
+    };
+  }
+  // 画像が出ている間にもう一度 → 特殊演出。見つかるかどうかは、ここで1回だけ決める
+  const found = Math.random() < Math.min(FX_FIND_MAX, FX_FIND_BASE + FX_FIND_STEP * pass);
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  if (found) {                                     // ゲームオーバー：通過数も引っかかったワードも元に戻す
+    return {
+      pass: 0, used: [], imgUntil: 0, busyUntil: now + FX_FREEZE_MS + FX_APPROACH_MS + FX_FOUND_MS,
+      ev: { id: msgId, kind: "search", t: now, found: true, dir, count: pass, w: hit.words },
+    };
+  }
+  const dur = FX_FREEZE_MS + FX_APPROACH_MS + FX_SLIDE_MS + FX_CALM_MS;
+  return {
+    pass: pass + 1, used: used.concat(hit.words), imgUntil: now + dur + FX_IMAGE_HOLD_MS, busyUntil: now + dur,
+    ev: { id: msgId, kind: "search", t: now, found: false, dir, count: pass, w: hit.words },
+  };
+}
 
 // 1文字を比べやすい形にそろえる（全角半角・大文字小文字・カタカナ→ひらがな）
 function fxNormUnit(s) {
@@ -1186,16 +1304,22 @@ function WordListRoom({ name, room, onLeave }) {
   const [fxHideChat, setFxHideChat] = useState(false);   // メッセージを消している間
   const [fxFound, setFxFound] = useState(false);         // 見つかった（赤く光る）
   const [fxOver, setFxOver] = useState(null);            // ゲームオーバー画面 { count }
-  const [passCount, setPassCount] = useState(() => {     // 通過数（ルームごとに数える）
-    try { return Math.max(0, parseInt(localStorage.getItem(FX_PASS_KEY + topic), 10) || 0); } catch (e) { return 0; }
-  });
+  const [passCount, setPassCount] = useState(0);       // 通過数（ルームごと・みんなで共有）
   const fxImgRef = useRef("off"); fxImgRef.current = fxImg;
   const eyeLookRef = useRef(1); eyeLookRef.current = eyeLook;
-  const passRef = useRef(passCount); passRef.current = passCount;
   const fxBusyRef = useRef(false);   // 特殊演出の最中
   const fxRafRef = useRef(0);
   const fxWrapRef = useRef(null);
   const searchRef = useRef(null);
+  const serverOffsetRef = useRef(0);   // サーバーとの時計のずれ（ミリ秒）
+  const fxSharedRef = useRef({});      // 共有の演出の状態（最新）
+  const fxSharedOkRef = useRef(true);  // false のときは、共有に書けないので、この端末だけで動かす
+  const fxInitRef = useRef(false);     // 共有の状態を最初に受け取ったか
+  const fxLastEvRef = useRef(null);    // 最後に見た出来事のid
+  const fxEvWordsRef = useRef({});     // メッセージid → 光らせるワード
+  const fxTextRef = useRef({});        // メッセージid → 本文（光らせる位置を出すため）
+  const fxHandleRef = useRef(null);
+  const fxApplyRef = useRef(null);
   const fxShown = fxImg !== "off";
   useEffect(() => {
     if (!fxShown || fxSearching) return;
@@ -1221,32 +1345,36 @@ function WordListRoom({ name, room, onLeave }) {
     const root = document.getElementById("app-root");
     if (root) root.style.transform = "";
   }, []);
-  // 画像を60秒出して、そのあと薄れて消す（数え直すときもここを通る）
-  const armImgHold = useCallback(() => {
+  // 画像を出して、時間がきたら薄れて消す。ms は出しておく時間（省くと60秒）
+  const armImgHold = useCallback((ms) => {
     const t = fxTimersRef.current;
     clearTimeout(t.imgOut); clearTimeout(t.imgOff);
     t.imgOut = setTimeout(() => {
       setFxImg("out");
       t.imgOff = setTimeout(() => setFxImg("off"), FX_IMAGE_FADE_MS);
-    }, FX_IMAGE_HOLD_MS);
+    }, typeof ms === "number" ? Math.max(0, ms) : FX_IMAGE_HOLD_MS);
   }, []);
-  const savePass = (n) => {
-    passRef.current = n;
-    setPassCount(n);
-    try {
-      if (n > 0) localStorage.setItem(FX_PASS_KEY + topic, String(n));
-      else localStorage.removeItem(FX_PASS_KEY + topic);
-    } catch (e) {}
-  };
-  // 画像が出ている間にもう一度ワードを言われたときの特殊演出
-  searchRef.current = () => {
+
+  // 引っかかったメッセージの該当部分を光らせる（本文と光らせるワードがそろったときに）
+  const fxTryGlow = useCallback((id) => {
+    const words = fxEvWordsRef.current[id];
+    const text = fxTextRef.current[id];
+    if (!words || typeof text !== "string") return;
+    const h = fxMatch(text, words);
+    if (h) setGlowMap((prev) => ({ ...prev, [id]: h.ranges }));
+  }, []);
+
+  // 画像が出ている間にもう一度ワードを言われたときの特殊演出。
+  // 見つかるか・目をどちらに向けるかは共有の状態で決まっていて、みんなの画面で同じように動く。
+  // o = { found, count, dir, elapsed }（elapsed：始まってから何ミリ秒たったか）
+  searchRef.current = (o) => {
     if (fxBusyRef.current) return;
     fxBusyRef.current = true;
     const t = fxTimersRef.current;
     clearTimeout(t.imgOut); clearTimeout(t.imgOff); // 画像は演出が終わるまで消さない
-    const n = passRef.current;
-    const found = Math.random() < Math.min(FX_FIND_MAX, FX_FIND_BASE + FX_FIND_STEP * n);
-    const d = eyeLookRef.current >= 0 ? 1 : -1;      // 固定する向き
+    if (fxImgRef.current !== "in") setFxImg("in");
+    const found = !!o.found;
+    const d = o.dir === -1 ? -1 : 1;                 // 固定する向き
     const root = document.getElementById("app-root");
     // 毎フレーム動かすものは state を通さず、直接書き換える（再描画を避ける）
     const setLook = (v) => { const w = fxWrapRef.current; if (w) w.style.setProperty("--look", String(v)); };
@@ -1259,7 +1387,7 @@ function WordListRoom({ name, room, onLeave }) {
     setFxSearching(true); setFxHideChat(true); setFxFound(false);
     setLook(d);
     const A = FX_FREEZE_MS + FX_APPROACH_MS;
-    const t0 = performance.now();
+    const t0 = performance.now() - Math.min(3000, Math.max(0, o.elapsed || 0));
     let foundShown = false, restored = false;
     const frame = (now) => {
       const e = now - t0;
@@ -1276,8 +1404,8 @@ function WordListRoom({ name, room, onLeave }) {
           shake(FX_FOUND_SHAKE);
         } else {
           shake(0);
-          setFxOver({ count: passRef.current });      // ゲームオーバー（通過数は表示してから0に戻す）
-          savePass(0);
+          setFxOver({ count: o.count || 0 });         // ゲームオーバー（通過数は、リセットされる前の数を出す）
+          setPassCount(0);
           return;
         }
       } else {
@@ -1288,12 +1416,13 @@ function WordListRoom({ name, room, onLeave }) {
         if (s >= 1 && !restored) { restored = true; setFxHideChat(false); } // ボワーっとチャットが戻る
         if (c >= 1) {
           shake(0);
-          savePass(passRef.current + 1);
+          const sh = fxSharedRef.current || {};
+          setPassCount(sh.pass || 0);                 // 通過数の表示は、演出が終わってから変える
           eyeLookRef.current = -d;
           setEyeLook(-d);
           fxBusyRef.current = false;
           setFxSearching(false);
-          armImgHold();
+          armImgHold((sh.imgUntil || 0) - (Date.now() + serverOffsetRef.current));
           return;
         }
       }
@@ -1301,22 +1430,78 @@ function WordListRoom({ name, room, onLeave }) {
     };
     fxRafRef.current = requestAnimationFrame(frame);
   };
-  const triggerFx = useCallback((id, hit) => {
-    const t = fxTimersRef.current;
-    setGlowMap((prev) => ({ ...prev, [id]: hit.ranges }));
-    if (fxBusyRef.current) return;                      // 特殊演出の最中は、何も足さない
-    if (fxImgRef.current === "in" && searchRef.current) { // 画像が出ている間にもう一度 → 特殊演出
-      searchRef.current();
+
+  // 共有の状態（みんなで同じもの）を受け取ったときの処理。
+  // 最初に受け取ったときは、今の状態に合わせるだけ（開いていなかった間の出来事は、通過数の増減で分かる）。
+  // 開いている間に新しい出来事が起きたら、同じ演出を始める。
+  fxApplyRef.current = (st, initial) => {
+    const s = st || {};
+    fxSharedRef.current = s;
+    const now = Date.now() + serverOffsetRef.current;
+    const ev = s.ev && s.ev.id ? s.ev : null;
+    const isNew = !initial && !!ev && ev.id !== fxLastEvRef.current;
+    if (ev) fxLastEvRef.current = ev.id;
+    const maxAge = ev && ev.kind === "search" ? 3000 : 20000; // 遅れて届いた古い出来事は再生しない
+    const fresh = isNew && !fxBusyRef.current && now - (ev.t || 0) < maxAge;
+    if (!fxBusyRef.current && !(fresh && ev.kind === "search")) setPassCount(s.pass || 0);
+    if (initial) {
+      if (!fxBusyRef.current && (s.imgUntil || 0) > now) { setFxImg("in"); armImgHold(s.imgUntil - now); }
       return;
     }
-    // バナー：引っかかったワード全体を、少しのあいだ上に出す
-    setFxBanner({ key: Date.now() + Math.random(), words: hit.words });
-    clearTimeout(t.banner);
-    t.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
-    // 画像：ゆっくり出てきて、60秒たつと薄れて消える。出ている間にまた引っかかったら、60秒を数え直す
-    setFxImg("in");
-    armImgHold();
-  }, [armImgHold]);
+    if (!isNew) return;
+    if (ev.w) {
+      fxEvWordsRef.current[ev.id] = ev.w;
+      const ks = Object.keys(fxEvWordsRef.current);
+      if (ks.length > 40) delete fxEvWordsRef.current[ks[0]];
+      fxTryGlow(ev.id);
+    }
+    if (!fresh) return;
+    if (ev.kind === "image") {
+      // バナー：引っかかったワード全体を、少しのあいだ上に出す。画像：出てきて、時間がきたら薄れて消える
+      const tm = fxTimersRef.current;
+      setFxBanner({ key: Date.now() + Math.random(), words: ev.w || [] });
+      clearTimeout(tm.banner);
+      tm.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
+      setFxImg("in");
+      armImgHold((s.imgUntil || 0) - now);
+    } else if (ev.kind === "search" && searchRef.current) {
+      searchRef.current({ found: !!ev.found, count: ev.count || 0, dir: ev.dir, elapsed: now - (ev.t || now) });
+    }
+  };
+
+  // 新しく届いたメッセージ1件を、共有の状態に反映させる（誰か1人の端末が書けば、みんなに伝わる）
+  fxHandleRef.current = (msg) => {
+    if (fxBusyRef.current) return;
+    const cur = fxSharedRef.current || {};
+    const used = Array.isArray(cur.used) ? cur.used : (cur.used ? Object.values(cur.used) : []);
+    // 引っかかる見込みのないメッセージは、ここで終わり（使ったワードは外して調べる）
+    if (!fxMatch(msg.text, TRIGGER_WORDS.filter((w) => !used.includes(w)))) {
+      fxTryGlow(msg.id);                              // 先に他の人の端末が処理していたら、ここで光らせる
+      return;
+    }
+    const nowFn = () => Date.now() + serverOffsetRef.current;
+    const runLocal = () => {                          // この端末だけで動かす
+      const next = fxReduce(fxLocalLoad(topic), msg.id, msg.text, nowFn());
+      if (!next) return;
+      fxLocalSave(topic, next);
+      fxApplyRef.current(next, false);
+    };
+    if (!fxSharedOkRef.current) { runLocal(); return; }
+    fbDb.ref(`rooms/${topic}/fx`).transaction(
+      (c) => fxReduce(c, msg.id, msg.text, nowFn()),
+      (err) => {
+        if (!err) return;                              // うまくいけば、共有の状態の変化が届いて演出が始まる
+        const code = String(err.code || err.message || "").toLowerCase();
+        console.warn("演出の共有に失敗しました", err);
+        if (code.indexOf("permission") >= 0) {         // 書き込みが許可されていない → この端末だけで動かす
+          fxSharedOkRef.current = false;
+          fxApplyRef.current(fxLocalLoad(topic), true);
+          runLocal();
+        }
+      },
+      false
+    );
+  };
 
   // Realtime Database の1件（メッセージ）を表示用に変換して state に入れる。
   // 履歴の読み込みと新着の受信で同じ処理を使う。
@@ -1342,8 +1527,10 @@ function WordListRoom({ name, room, onLeave }) {
     });
 
     if (isNew && loadedRef.current && !msg.photo) {
-      const hit = fxMatch(msg.text);
-      if (hit) triggerFx(msg.id, hit);
+      fxTextRef.current[msg.id] = msg.text;           // 光らせる位置を出すために、本文を少しのあいだ覚えておく
+      const ks = Object.keys(fxTextRef.current);
+      if (ks.length > 40) delete fxTextRef.current[ks[0]];
+      if (fxHandleRef.current) fxHandleRef.current(msg);
     }
 
     if (isNew && loadedRef.current && msg.sender !== name &&
@@ -1354,7 +1541,7 @@ function WordListRoom({ name, room, onLeave }) {
         showMessageNotification("INMUchat", `${msg.sender}：${preview}`, `chat-${topic}`);
       }
     }
-  }, [name, topic, triggerFx]);
+  }, [name, topic]);
 
   // 通話のシグナル（offer / answer / ICE候補 / 切断）を処理する。
   // 古いものや、すでに処理したものは無視する。
@@ -1758,6 +1945,7 @@ function WordListRoom({ name, room, onLeave }) {
     let msgQ = null;
     let sigQ = null;
     let sweepTimer = null;
+    let fxQ = null;
     let serverOffset = 0;
     const connRef = fbDb.ref(".info/connected");
     const offRef = fbDb.ref(".info/serverTimeOffset");
@@ -1765,7 +1953,7 @@ function WordListRoom({ name, room, onLeave }) {
       if (s.val()) { hasBeenLiveRef.current = true; setConnState("live"); setError(null); }
       else setConnState(hasBeenLiveRef.current ? "reconnecting" : "connecting");
     };
-    const onOff = (s) => { serverOffset = s.val() || 0; };
+    const onOff = (s) => { serverOffset = s.val() || 0; serverOffsetRef.current = serverOffset; };
     connRef.on("value", onConn);
     offRef.on("value", onOff);
 
@@ -1840,6 +2028,20 @@ function WordListRoom({ name, room, onLeave }) {
       }, fail);
       sigQ = base.child("signals").limitToLast(30);
       sigQ.on("child_added", (snap) => processSignal(snap, serverOffset), fail);
+      // 特殊演出の共有の状態（通過数・引っかかったワード・最後の出来事）。変わるたびにみんなに届く
+      fxQ = base.child("fx");
+      fxQ.on("value", (snap) => {
+        if (cancelled || !fxSharedOkRef.current) return;
+        const first = !fxInitRef.current;
+        fxInitRef.current = true;
+        if (fxApplyRef.current) fxApplyRef.current(snap.val() || {}, first);
+      }, (err) => {
+        // 読めない（ルール未設定など）ときは、この端末だけで動かす
+        console.warn("演出の共有を読めませんでした", err);
+        if (cancelled || !fxSharedOkRef.current) return;
+        fxSharedOkRef.current = false;
+        if (fxApplyRef.current) fxApplyRef.current(fxLocalLoad(topic), true);
+      });
       sweepExpired();
       sweepTimer = setInterval(() => { sweepExpired(); sweepOverflow(); }, 60 * 60 * 1000); // 開きっぱなしでも1時間ごとに掃除
     }).catch(fail);
@@ -1850,6 +2052,7 @@ function WordListRoom({ name, room, onLeave }) {
       offRef.off("value", onOff);
       if (msgQ) msgQ.off();
       if (sigQ) sigQ.off();
+      if (fxQ) fxQ.off();
       if (sweepTimer) clearInterval(sweepTimer);
     };
   }, [topic, processMessage, processSignal]);
