@@ -512,7 +512,10 @@
     background: #ffd2d2;
     box-shadow: 0 0 22px 10px rgba(255,0,0,0.95), 0 0 60px 24px rgba(255,0,0,0.55);
   }
-  @keyframes fxLunge { from { scale: 1; } to { scale: 1.5; } }
+  @keyframes fxLunge {
+    from { transform: translate(-50%, -50%) scale(1); }
+    to   { transform: translate(-50%, -50%) scale(1.5); }
+  }
   /* メッセージが「スッと消えて」「ボワーっと戻る」 */
   .messages { transition: opacity 2.6s ease, filter 2.6s ease; }
   .messages.fx-chat-hidden { opacity: 0; filter: blur(8px); pointer-events: none; transition: opacity 1.2s ease, filter 1.2s ease; }
@@ -820,6 +823,7 @@ const TRIGGER_WORDS = [
   "ありがとナス",
   "You have a",
   "夜中腹減んないすか？",
+  "嘘つけ絶対見てたゾ",
 ];
 // 判定に使う部分だけを別に指定したいワード（左：リストのワード → 右：実際に判定する文字列）。
 // バナーにはリストのワードがそのまま出る。光るのは判定に使った部分だけ。
@@ -843,7 +847,8 @@ const FX_FIND_STEP = 0.03;           // 通過数が1増えるごとに足す確
 const FX_FIND_MAX = 0.5;             // 見つかる確率の上限
 const FX_FREEZE_MS = 1500;           // 目の向きが固定され、メッセージが消えていく時間
 const FX_APPROACH_MS = 7000;         // 目がゆっくりこちらを向いていく時間（揺れも強くなる）
-const FX_SHAKE_MAX = 7;              // 画面の揺れ（px）。こちらを向く直前が最大
+const FX_SHAKE_START = 0.45;         // 揺れ始めるタイミング（こちらを向いていく時間のうち、何割たったところから揺れるか）
+const FX_SHAKE_MAX = 4;              // 画面の揺れ（px）。こちらを向く直前が最大
 const FX_SLIDE_MS = 450;             // 見つからなかったとき、目が反対側へ滑っていく時間
 const FX_CALM_MS = 900;              // そのあと揺れが収まるまでの時間
 const FX_FOUND_MS = 2600;            // 見つかったとき、赤く光ってから暗転するまでの時間
@@ -1404,7 +1409,8 @@ function WordListRoom({ name, room, onLeave }) {
       } else if (e < A) {
         const p = (e - FX_FREEZE_MS) / FX_APPROACH_MS; // 0→1：ゆっくりこちらへ
         setLook(d * (1 - Math.pow(p, 1.5)));
-        shake(FX_SHAKE_MAX * p * p);
+        const q = Math.max(0, (p - FX_SHAKE_START) / (1 - FX_SHAKE_START)); // 揺れ始めてから0→1
+        shake(FX_SHAKE_MAX * q * q);
       } else if (found) {
         setLook(0);                                   // 目が合う
         if (!foundShown) { foundShown = true; setFxFound(true); }
