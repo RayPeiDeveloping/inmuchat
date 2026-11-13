@@ -628,14 +628,14 @@ const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = R
 
 // ---- Firebase（Realtime Database + 匿名認証）----
 const firebaseConfig = {
-  apiKey: "AIzaSyAtpXsPpuLPxJN3oON1I0wtchyB6BJ4uzY",
-  authDomain: "tango-tyo.firebaseapp.com",
-  databaseURL: "https://tango-tyo-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "tango-tyo",
-  storageBucket: "tango-tyo.firebasestorage.app",
-  messagingSenderId: "617044102483",
-  appId: "1:617044102483:web:69369e8226715ad9a925a6",
-  measurementId: "G-QGZG8E949B"
+  apiKey: "AIzaSyDI5HtmqIKS4_4Ww1igm1VBexu8ql_Bs4g",
+  authDomain: "inmuchat-42e1e.firebaseapp.com",
+  databaseURL: "https://inmuchat-42e1e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "inmuchat-42e1e",
+  storageBucket: "inmuchat-42e1e.firebasestorage.app",
+  messagingSenderId: "32431282487",
+  appId: "1:32431282487:web:1df6dc3281cc680256e2b2",
+  measurementId: "G-KZKHFBT0KV"
 };
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
@@ -768,7 +768,7 @@ function writeNotifyOff(off) { try { if (off) localStorage.setItem(NOTIFY_OFF_KE
 
 // ===== Web Push（アプリを閉じていても通知が届くようにする）=====
 // 下の2つを、手順で作った自分の値に書き換える。
-const PUSH_API = "https://tango-push.eisas12m08y.workers.dev";
+const PUSH_API = "https://inmuchat.eisas12m08y.workers.dev";
 const VAPID_PUBLIC_KEY = "BG5OX6a1SYL5o2A78BkKPmRES8D5o2UE1EyWj_Xu-VSX2BUygm9vglYr0R9PkRIz_2e5lQo1YSKvDsjm9t3eaTg";
 const DEVICE_ID_KEY = "tango_device_id";
 
