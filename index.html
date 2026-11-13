@@ -824,6 +824,14 @@ const TRIGGER_WORDS = [
   "You have a",
   "夜中腹減んないすか？",
   "嘘つけ絶対見てたゾ",
+  "野獣",
+  "野獣先輩",
+  "114514",
+  "810",
+  "1919",
+  "真夏の夜の淫夢",
+  "昏睡レイプ",
+  "ホモ",
 ];
 // 判定に使う部分だけを別に指定したいワード（左：リストのワード → 右：実際に判定する文字列）。
 // バナーにはリストのワードがそのまま出る。光るのは判定に使った部分だけ。
@@ -834,6 +842,7 @@ const FX_IMAGE_SRC = "IMG_8051.png"; // index.html と同じフォルダに置�
 const FX_MATCH_LEN = 3;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
 const FX_IMAGE_HOLD_MS = 60000;      // 画像が出ている時間（このあと薄れて消える）
 const FX_IMAGE_FADE_MS = 3000;       // 画像が薄れて消えるまでの時間（出てくるのも同じ長さ）
+const FX_USED_TEXT = "使用済み：ゲームオーバーまで使えません"; // 使ったワードをもう一度言ったときのバナー
 const FX_BANNER_MS = 6000;           // バナーが出ている時間
 const FX_EYES = [{ x: 52, y: 50 }, { x: 75, y: 50 }]; // 目の位置（画像の左上から何%か）
 const FX_EYE_SIZE = 13;              // 目の大きさ（画像の幅に対する%）
@@ -842,9 +851,9 @@ const FX_EYE_SLOW_MS = [1500, 3500]; // ゆっくりになったあとの間隔�
 const FX_EYE_RAMP_MS = 45000;        // 速い→ゆっくりに変わるまでの時間
 
 // ===== 画像が出ている間にもう一度ワードを言ったときの特殊演出 =====
-const FX_FIND_BASE = 0.2;            // 見つかる確率（通過数0のとき）
-const FX_FIND_STEP = 0.03;           // 通過数が1増えるごとに足す確率（10回で50%）
-const FX_FIND_MAX = 0.5;             // 見つかる確率の上限
+const FX_FIND_BASE = 0.02;           // 見つかる確率（通過数0のとき）。最初はほとんど見つからない
+const FX_FIND_STEP = 0.032;          // 通過数が1増えるごとに足す確率
+const FX_FIND_MAX = 0.6;             // 見つかる確率の上限（この設定だと、見つかるまでの特殊演出は平均で約7回）
 const FX_FREEZE_MS = 1500;           // 目の向きが固定され、メッセージが消えていく時間
 const FX_APPROACH_MS = 7000;         // 目がゆっくりこちらを向いていく時間（揺れも強くなる）
 const FX_SHAKE_START = 0.45;         // 揺れ始めるタイミング（こちらを向いていく時間のうち、何割たったところから揺れるか）
@@ -878,13 +887,13 @@ function fxReduce(cur, msgId, text, now) {
   const hit = fxMatch(text, TRIGGER_WORDS.filter((w) => !used.includes(w)));
   if (!hit) return;
   const pass = c.pass || 0;
-  if ((c.imgUntil || 0) <= now) {                  // 画像が出ていない → 画像を出す
+  if (used.length === 0) {                        // ゲームが始まってから最初のワード → 画像を出す（そのあとは、画像が薄れて消えていても特殊演出に入る）
     return {
       pass, used: used.concat(hit.words), imgUntil: now + FX_IMAGE_HOLD_MS, busyUntil: 0,
       ev: { id: msgId, kind: "image", t: now, w: hit.words },
     };
   }
-  // 画像が出ている間にもう一度 → 特殊演出。見つかるかどうかは、ここで1回だけ決める
+  // 2回目以降 → 特殊演出。見つかるかどうかは、ここで1回だけ決める
   const found = Math.random() < Math.min(FX_FIND_MAX, FX_FIND_BASE + FX_FIND_STEP * pass);
   const dir = Math.random() < 0.5 ? 1 : -1;
   if (found) {                                     // ゲームオーバー：通過数も引っかかったワードも元に戻す
@@ -933,35 +942,23 @@ function fxMatch(text, wordList) {
   if (!list.length) return null;
   const msg = fxNormalize(text);
   if (!msg.length) return null;
-  const marks = new Array(msg.length).fill(false);
-  const hitWords = [];
+  // 全ワードのなかで一番長く一致した1か所だけを、当てはまったものとする（同じ長さなら、リストの前にあるほう）
+  let best = 0, bestWord = null, bestAt = -1;
   for (const word of list) {
     const w = fxNormalize(FX_MATCH_ONLY[word] || word).map((x) => x.ch);
     if (!w.length) continue;
     const need = Math.min(FX_MATCH_LEN, w.length);
-    let hit = false;
     for (let i = 0; i < msg.length; i++) {
       for (let j = 0; j < w.length; j++) {
         let k = 0;
         while (i + k < msg.length && j + k < w.length && msg[i + k].ch === w[j + k]) k++;
-        if (k >= need) { hit = true; for (let t = 0; t < k; t++) marks[i + t] = true; }
+        if (k >= need && k > best) { best = k; bestWord = word; bestAt = i; }
       }
     }
-    if (hit) hitWords.push(word);
   }
-  if (!hitWords.length) return null;
-  const ranges = [];
-  let start = -1;
-  for (let i = 0; i <= msg.length; i++) {
-    if (i < msg.length && marks[i]) { if (start < 0) start = i; }
-    else if (start >= 0) {
-      const r0 = msg[start].o0, r1 = msg[i - 1].o1;
-      const last = ranges[ranges.length - 1];
-      if (last && last[1] >= r0) last[1] = Math.max(last[1], r1);
-      else ranges.push([r0, r1]);
-      start = -1;
-    }
-  }
+  if (!bestWord) return null;
+  const hitWords = [bestWord];
+  const ranges = [[msg[bestAt].o0, msg[bestAt + best - 1].o1]];
   return { words: hitWords, ranges };
 }
 
@@ -1445,6 +1442,14 @@ function WordListRoom({ name, room, onLeave }) {
     fxRafRef.current = requestAnimationFrame(frame);
   };
 
+  // バナーを少しのあいだ上に出す
+  const showFxBanner = (words) => {
+    const tm = fxTimersRef.current;
+    setFxBanner({ key: Date.now() + Math.random(), words });
+    clearTimeout(tm.banner);
+    tm.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
+  };
+
   // 共有の状態（みんなで同じもの）を受け取ったときの処理。
   // 最初に受け取ったときは、今の状態に合わせるだけ（開いていなかった間の出来事は、通過数の増減で分かる）。
   // 開いている間に新しい出来事が起きたら、同じ演出を始める。
@@ -1472,13 +1477,11 @@ function WordListRoom({ name, room, onLeave }) {
     if (!fresh) return;
     if (ev.kind === "image") {
       // バナー：引っかかったワード全体を、少しのあいだ上に出す。画像：出てきて、時間がきたら薄れて消える
-      const tm = fxTimersRef.current;
-      setFxBanner({ key: Date.now() + Math.random(), words: ev.w || [] });
-      clearTimeout(tm.banner);
-      tm.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
+      showFxBanner(ev.w || []);
       setFxImg("in");
       armImgHold((s.imgUntil || 0) - now);
     } else if (ev.kind === "search" && searchRef.current) {
+      showFxBanner(ev.w || []);                       // 特殊演出のときも、引っかかったワードを出す
       searchRef.current({ found: !!ev.found, count: ev.count || 0, dir: ev.dir, elapsed: now - (ev.t || now) });
     }
   };
@@ -1488,8 +1491,9 @@ function WordListRoom({ name, room, onLeave }) {
     if (fxBusyRef.current) return;
     const cur = fxSharedRef.current || {};
     const used = Array.isArray(cur.used) ? cur.used : (cur.used ? Object.values(cur.used) : []);
-    // 引っかかる見込みのないメッセージは、ここで終わり（使ったワードは外して調べる）
+    // 使えるワードに当てはまればそちらで判定する。使えるものが1つもなく、使用済みのワードだけ当てはまるときは「使用済み」と出す
     if (!fxMatch(msg.text, TRIGGER_WORDS.filter((w) => !used.includes(w)))) {
+      if (used.length && fxMatch(msg.text, used)) showFxBanner([FX_USED_TEXT]);
       fxTryGlow(msg.id);                              // 先に他の人の端末が処理していたら、ここで光らせる
       return;
     }
@@ -2156,7 +2160,7 @@ function WordListRoom({ name, room, onLeave }) {
 
   const handleSend = async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sending || fxSearching) return;
     setSending(true);
     try {
       if (connState !== "live") throw new Error("接続が切れています");
@@ -2198,7 +2202,7 @@ function WordListRoom({ name, room, onLeave }) {
   };
 
   const handleSendPhoto = async () => {
-    if (!photoDraft || sending) return;
+    if (!photoDraft || sending || fxSearching) return;
     setSending(true);
     try {
       if (connState !== "live") throw new Error("接続が切れています");
@@ -2369,15 +2373,15 @@ function WordListRoom({ name, room, onLeave }) {
       </div>
 
       <div className="composer">
-        <button className="icon-btn" disabled={sending}
+        <button className="icon-btn" disabled={sending || fxSearching}
           onClick={() => fileInputRef.current && fileInputRef.current.click()}>📷</button>
         <input ref={fileInputRef} type="file" accept="image/*"
           style={{ display: "none" }} onChange={handlePickPhoto} />
         <textarea ref={composerRef} className="composer-input" rows={1} placeholder="メッセージを入力" value={draft}
-          disabled={sending}
+          disabled={sending || fxSearching}
           onChange={(e) => setDraft(e.target.value)}
           maxLength={500} />
-        <button className="send-btn" disabled={sending || !draft.trim()} onClick={handleSend}>➤</button>
+        <button className="send-btn" disabled={sending || fxSearching || !draft.trim()} onClick={handleSend}>➤</button>
       </div>
 
       {modal === "settings" && (
