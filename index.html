@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>たんご帳</title>
+<title>INMUchat</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="たんご帳">
+<meta name="apple-mobile-web-app-title" content="INMUchat">
 <meta name="theme-color" content="#ffe401">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -981,7 +981,7 @@ function Landing({ onJoin }) {
 
   return (
     <div className="landing">
-      <p className="eyebrow">たんご帳をはじめる</p>
+      <p className="eyebrow">INMUchatをはじめる</p>
       <h1>教材コードを決めて、<br/>学習をはじめよう。</h1>
 
       <div className="field">
@@ -1125,7 +1125,7 @@ function WordListRoom({ name, room, onLeave }) {
       playChime();
       if (notifyOnRef.current) {
         const preview = Array.from(String(msg.text || "")).slice(0, 60).join("");
-        showMessageNotification("たんご帳", `${msg.sender}：${preview}`, `chat-${topic}`);
+        showMessageNotification("INMUchat", `${msg.sender}：${preview}`, `chat-${topic}`);
       }
     }
   }, [name, topic]);
