@@ -487,18 +487,38 @@
       #3E343F 120deg 240deg,
       #979F9B 240deg 360deg);
   }
-  .fx-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-  .fx-image {
+  .fx-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; container-type: size; }
+  /* 画像と目をまとめた箱。画像の縦横比（--r）にぴったり合わせて、目の位置を画像の%で決められるようにする */
+  .fx-image-wrap {
     position: absolute;
     left: 50%; top: 46%;
+    aspect-ratio: var(--r, 1);
     width: min(64%, 340px);
-    max-height: 72%;
-    object-fit: contain;
+    width: min(64cqw, 340px, calc(72cqh * var(--r, 1)));
     transform: translate(-50%, -50%);
     opacity: 0;
   }
-  .fx-image.in { animation: fxFadeIn 3s ease-out forwards; }
-  .fx-image.out { animation: fxFadeOut 3s ease-in forwards; }
+  .fx-image-wrap.in { animation: fxFadeIn 3s ease-out forwards; }
+  .fx-image-wrap.out { animation: fxFadeOut 3s ease-in forwards; }
+  .fx-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .fx-eye {
+    position: absolute;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%);
+  }
+  /* --look: -1 で左、1 で右。横にだけ動く（こちらは見ない） */
+  .fx-pupil {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 46%; height: 46%;
+    border-radius: 50%;
+    background: #000;
+    transform: translate(calc(-50% + var(--look, 1) * 50%), -50%);
+    transition: transform 0.12s ease-out;
+  }
   @keyframes fxFadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes fxFadeOut { from { opacity: 1; } to { opacity: 0; } }
   .fx-banner {
@@ -682,12 +702,16 @@ function blobToDataUrl(blob) {
 
 // ===== 特定のワードで演出（画像・バナー・光）=====
 // ここに判定したいワードを並べる。例: const TRIGGER_WORDS = ["ワードA", "ワードB"];
-const TRIGGER_WORDS = ["スギィ"];
+const TRIGGER_WORDS = ["イキスギィ！"];
 const FX_IMAGE_SRC = "IMG_8051.png"; // index.html と同じフォルダに置く
-const FX_MATCH_LEN = 4;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
+const FX_MATCH_LEN = 3;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
 const FX_IMAGE_HOLD_MS = 60000;      // 画像が出ている時間（このあと薄れて消える）
 const FX_IMAGE_FADE_MS = 3000;       // 画像が薄れて消えるまでの時間（出てくるのも同じ長さ）
 const FX_BANNER_MS = 6000;           // バナーが出ている時間
+const FX_EYES = [{ x: 50, y: 50 }, { x: 75, y: 50 }]; // 目の位置（画像の左上から何%か）
+const FX_EYE_SIZE = 13;              // 目の大きさ（画像の幅に対する%）
+const FX_EYE_MIN_MS = 800;           // キョロキョロの間隔（短いほう）
+const FX_EYE_MAX_MS = 2800;          // キョロキョロの間隔（長いほう）
 
 // 1文字を比べやすい形にそろえる（全角半角・大文字小文字・カタカナ→ひらがな）
 function fxNormUnit(s) {
@@ -1100,6 +1124,19 @@ function WordListRoom({ name, room, onLeave }) {
   const [glowMap, setGlowMap] = useState({});   // メッセージID → 光らせる範囲
   const [fxBanner, setFxBanner] = useState(null); // { key, words }
   const [fxImg, setFxImg] = useState("off");    // "off" | "in" | "out"
+  const [fxRatio, setFxRatio] = useState(1);     // 画像の 幅÷高さ
+  const [eyeLook, setEyeLook] = useState(1);     // 目線：-1 左 / 1 右
+  const fxShown = fxImg !== "off";
+  useEffect(() => {
+    if (!fxShown) return;
+    let timer;
+    const tick = () => {
+      setEyeLook((d) => (Math.random() < 0.75 ? -d : d)); // たいてい反対側を見る。ときどき同じ側のまま
+      timer = setTimeout(tick, FX_EYE_MIN_MS + Math.random() * (FX_EYE_MAX_MS - FX_EYE_MIN_MS));
+    };
+    timer = setTimeout(tick, 600 + Math.random() * 1000);
+    return () => clearTimeout(timer);
+  }, [fxShown]);
   const fxTimersRef = useRef({});
   useEffect(() => () => { Object.values(fxTimersRef.current).forEach(clearTimeout); }, []);
   const triggerFx = useCallback((id, hit) => {
@@ -1880,8 +1917,16 @@ function WordListRoom({ name, room, onLeave }) {
       <div className="messages-wrap">
       <div className="fx-layer">
         {fxImg !== "off" && (
-          <img className={`fx-image ${fxImg}`} src={FX_IMAGE_SRC} alt=""
-            onError={(e) => { e.currentTarget.style.display = "none"; }} />
+          <div className={`fx-image-wrap ${fxImg}`} style={{ "--r": fxRatio, "--look": eyeLook }}>
+            <img className="fx-image" src={FX_IMAGE_SRC} alt=""
+              onLoad={(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setFxRatio(w / h); }}
+              onError={(e) => { e.currentTarget.parentNode.style.display = "none"; }} />
+            {FX_EYES.map((p, i) => (
+              <div className="fx-eye" key={i} style={{ left: p.x + "%", top: p.y + "%", width: FX_EYE_SIZE + "%" }}>
+                <div className="fx-pupil" />
+              </div>
+            ))}
+          </div>
         )}
       </div>
       <div className="messages" ref={messagesRef}
