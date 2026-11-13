@@ -1,6 +1,6 @@
 {
-  "name": "たんご帳",
-  "short_name": "たんご帳",
+  "name": "INMUchat",
+  "short_name": "INMUchat",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

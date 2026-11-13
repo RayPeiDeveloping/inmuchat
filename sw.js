@@ -1,4 +1,4 @@
-// たんご帳：通知用の Service Worker（index.html と同じ場所に置く）
+// INMUchat：通知用の Service Worker（index.html と同じ場所に置く）
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
@@ -10,7 +10,7 @@ self.addEventListener("push", (e) => {
   catch (_) { data = { body: e.data ? e.data.text() : "" }; }
   const tag = data.tag || "chat";
   e.waitUntil((async () => {
-    await self.registration.showNotification(data.title || "たんご帳", {
+    await self.registration.showNotification(data.title || "INMUchat", {
       body: data.body || "新着メッセージがあります",
       tag,
       renotify: true,
