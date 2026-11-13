@@ -471,17 +471,78 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    /* アイコンと同じ3分割の背景（円なし）。中心から真上・右下・左下へ区切る */
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: transparent;
+  }
+  /* アイコンと同じ3分割の背景（円なし）。中心から真上・右下・左下へ区切る */
+  .messages-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
     background: conic-gradient(from 0deg at 50% 50%,
       #C9BFB6 0deg 120deg,
       #3E343F 120deg 240deg,
       #979F9B 240deg 360deg);
   }
+  .fx-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .fx-image {
+    position: absolute;
+    left: 50%; top: 46%;
+    width: min(64%, 340px);
+    max-height: 72%;
+    object-fit: contain;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+  }
+  .fx-image.in { animation: fxFadeIn 3s ease-out forwards; }
+  .fx-image.out { animation: fxFadeOut 3s ease-in forwards; }
+  @keyframes fxFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fxFadeOut { from { opacity: 1; } to { opacity: 0; } }
+  .fx-banner {
+    position: absolute;
+    top: 10px; left: 50%;
+    z-index: 3;
+    max-width: 92%;
+    padding: 10px 20px;
+    border-radius: 14px;
+    background: rgba(62,52,63,0.95);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.3), inset 0 -3px 0 #A1736B;
+    color: #fff;
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 18px;
+    text-align: center;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+    animation: fxBanner 6s ease forwards;
+  }
+  @keyframes fxBanner {
+    0%   { opacity: 0; transform: translate(-50%, -14px); }
+    7%   { opacity: 1; transform: translate(-50%, 0); }
+    88%  { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -6px); }
+  }
+  .hit-glow {
+    border-radius: 6px;
+    box-shadow: 0 0 8px 2px rgba(255,196,80,0.55);
+    background: rgba(255,214,120,0.30);
+    animation: hitGlow 2.8s ease-out 1 both;
+  }
+  @keyframes hitGlow {
+    0%   { box-shadow: 0 0 0 0 rgba(255,196,80,0);    background: rgba(255,214,120,0); }
+    18%  { box-shadow: 0 0 24px 11px rgba(255,196,80,0.95); background: rgba(255,226,150,0.80); }
+    42%  { box-shadow: 0 0 10px 4px rgba(255,196,80,0.55);  background: rgba(255,214,120,0.40); }
+    62%  { box-shadow: 0 0 20px 8px rgba(255,196,80,0.85);  background: rgba(255,226,150,0.65); }
+    100% { box-shadow: 0 0 8px 2px rgba(255,196,80,0.55);   background: rgba(255,214,120,0.30); }
+  }
   .msg { display: flex; flex-direction: column; max-width: 80%; }
   .msg.cont { margin-top: -5px; }
   .msg.mine { align-self: flex-end; align-items: flex-end; }
   .msg.theirs { align-self: flex-start; align-items: flex-start; }
-  .msg-sender { font-size: 11.5px; font-weight: 700; color: var(--ink); margin: 0 6px 3px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,0.82); }
+  .msg-sender { font-size: 11px; font-weight: 800; letter-spacing: 0.03em; color: #fff; margin: 0 2px 4px; padding: 2px 10px; border-radius: 10px; background: #8E625B; }
   .msg-line { display: flex; align-items: flex-end; gap: 6px; min-width: 0; }
   .msg.mine .msg-line { flex-direction: row-reverse; }
   .msg-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -617,6 +678,93 @@ function blobToDataUrl(blob) {
     r.onerror = () => reject(new Error("read failed"));
     r.readAsDataURL(blob);
   });
+}
+
+// ===== 特定のワードで演出（画像・バナー・光）=====
+// ここに判定したいワードを並べる。例: const TRIGGER_WORDS = ["ワードA", "ワードB"];
+const TRIGGER_WORDS = [];
+const FX_IMAGE_SRC = "IMG_8051.png"; // index.html と同じフォルダに置く
+const FX_MATCH_LEN = 4;              // 連続して一致する文字数（これより短いワードは、ワード全体が含まれたときだけ一致）
+const FX_IMAGE_HOLD_MS = 60000;      // 画像が出ている時間（このあと薄れて消える）
+const FX_IMAGE_FADE_MS = 3000;       // 画像が薄れて消えるまでの時間（出てくるのも同じ長さ）
+const FX_BANNER_MS = 6000;           // バナーが出ている時間
+
+// 1文字を比べやすい形にそろえる（全角半角・大文字小文字・カタカナ→ひらがな）
+function fxNormUnit(s) {
+  return s.normalize("NFKC").toLowerCase()
+    .replace(/[\u30A1-\u30F6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
+// 文字列を「そろえた1文字ずつ」の配列にする。元の文字列での位置（o0〜o1）も持たせる。
+function fxNormalize(text) {
+  const src = String(text);
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    let len = src.codePointAt(i) > 0xFFFF ? 2 : 1;
+    let piece = src.slice(i, i + len);
+    const next = src[i + len];
+    // 濁点・半濁点（結合文字、半角の ﾞ ﾟ）は直前の文字といっしょに扱う
+    if (next === "\u3099" || next === "\u309A" ||
+        (/[\uFF66-\uFF9D]/.test(piece) && (next === "\uFF9E" || next === "\uFF9F"))) {
+      piece += next; len += 1;
+    }
+    for (const ch of Array.from(fxNormUnit(piece))) out.push({ ch, o0: i, o1: i + len });
+    i += len;
+  }
+  return out;
+}
+
+// メッセージにワードが引っかかったか調べる。引っかかったら { words, ranges } を返す。
+// words: 引っかかったワード（リストに書いたまま） / ranges: メッセージ上の一致部分 [開始, 終了) の配列
+function fxMatch(text, wordList) {
+  const list = wordList || TRIGGER_WORDS;
+  if (!list.length) return null;
+  const msg = fxNormalize(text);
+  if (!msg.length) return null;
+  const marks = new Array(msg.length).fill(false);
+  const hitWords = [];
+  for (const word of list) {
+    const w = fxNormalize(word).map((x) => x.ch);
+    if (!w.length) continue;
+    const need = Math.min(FX_MATCH_LEN, w.length);
+    let hit = false;
+    for (let i = 0; i < msg.length; i++) {
+      for (let j = 0; j < w.length; j++) {
+        let k = 0;
+        while (i + k < msg.length && j + k < w.length && msg[i + k].ch === w[j + k]) k++;
+        if (k >= need) { hit = true; for (let t = 0; t < k; t++) marks[i + t] = true; }
+      }
+    }
+    if (hit) hitWords.push(word);
+  }
+  if (!hitWords.length) return null;
+  const ranges = [];
+  let start = -1;
+  for (let i = 0; i <= msg.length; i++) {
+    if (i < msg.length && marks[i]) { if (start < 0) start = i; }
+    else if (start >= 0) {
+      const r0 = msg[start].o0, r1 = msg[i - 1].o1;
+      const last = ranges[ranges.length - 1];
+      if (last && last[1] >= r0) last[1] = Math.max(last[1], r1);
+      else ranges.push([r0, r1]);
+      start = -1;
+    }
+  }
+  return { words: hitWords, ranges };
+}
+
+// メッセージ中の一致部分を <span> で包んで光らせる
+function renderGlow(text, ranges) {
+  const parts = [];
+  let pos = 0;
+  ranges.forEach(([a, b], idx) => {
+    if (a > pos) parts.push(text.slice(pos, a));
+    parts.push(<span key={idx} className="hit-glow">{text.slice(a, b)}</span>);
+    pos = b;
+  });
+  if (pos < text.length) parts.push(text.slice(pos));
+  return parts;
 }
 
 function randomRoomCode() {
@@ -948,7 +1096,29 @@ function WordListRoom({ name, room, onLeave }) {
   const callRouteIntervalRef = useRef(null);
   const handleSignalRef = useRef(null);
 
-// Realtime Database の1件（メッセージ）を表示用に変換して state に入れる。
+// ---- 特定ワードの演出（光・バナー・画像）----
+  const [glowMap, setGlowMap] = useState({});   // メッセージID → 光らせる範囲
+  const [fxBanner, setFxBanner] = useState(null); // { key, words }
+  const [fxImg, setFxImg] = useState("off");    // "off" | "in" | "out"
+  const fxTimersRef = useRef({});
+  useEffect(() => () => { Object.values(fxTimersRef.current).forEach(clearTimeout); }, []);
+  const triggerFx = useCallback((id, hit) => {
+    const t = fxTimersRef.current;
+    setGlowMap((prev) => ({ ...prev, [id]: hit.ranges }));
+    // バナー：引っかかったワード全体を、少しのあいだ上に出す
+    setFxBanner({ key: Date.now() + Math.random(), words: hit.words });
+    clearTimeout(t.banner);
+    t.banner = setTimeout(() => setFxBanner(null), FX_BANNER_MS);
+    // 画像：ゆっくり出てきて、60秒たつと薄れて消える。出ている間にまた引っかかったら、60秒を数え直す
+    setFxImg("in");
+    clearTimeout(t.imgOut); clearTimeout(t.imgOff);
+    t.imgOut = setTimeout(() => {
+      setFxImg("out");
+      t.imgOff = setTimeout(() => setFxImg("off"), FX_IMAGE_FADE_MS);
+    }, FX_IMAGE_HOLD_MS);
+  }, []);
+
+  // Realtime Database の1件（メッセージ）を表示用に変換して state に入れる。
   // 履歴の読み込みと新着の受信で同じ処理を使う。
   const processMessage = useCallback((snap) => {
     const v = snap.val();
@@ -971,6 +1141,11 @@ function WordListRoom({ name, room, onLeave }) {
       return [...base, msg].sort((a, b) => a.ts - b.ts).slice(-300);
     });
 
+    if (isNew && loadedRef.current && !msg.photo) {
+      const hit = fxMatch(msg.text);
+      if (hit) triggerFx(msg.id, hit);
+    }
+
     if (isNew && loadedRef.current && msg.sender !== name &&
         (document.hidden || !document.hasFocus())) {
       playChime();
@@ -979,7 +1154,7 @@ function WordListRoom({ name, room, onLeave }) {
         showMessageNotification("INMUchat", `${msg.sender}：${preview}`, `chat-${topic}`);
       }
     }
-  }, [name, topic]);
+  }, [name, topic, triggerFx]);
 
   // 通話のシグナル（offer / answer / ICE候補 / 切断）を処理する。
   // 古いものや、すでに処理したものは無視する。
@@ -1702,6 +1877,13 @@ function WordListRoom({ name, room, onLeave }) {
         </div>
       )}
 
+      <div className="messages-wrap">
+      <div className="fx-layer">
+        {fxImg !== "off" && (
+          <img className={`fx-image ${fxImg}`} src={FX_IMAGE_SRC} alt=""
+            onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        )}
+      </div>
       <div className="messages" ref={messagesRef}
         onScroll={() => {
           const el = messagesRef.current;
@@ -1727,7 +1909,7 @@ function WordListRoom({ name, room, onLeave }) {
               {!mine && !cont && <div className="msg-sender">{m.sender}</div>}
               <div className="msg-line">
                 <div className="msg-content">
-                  {m.text && <div className="msg-bubble">{m.text}</div>}
+                  {m.text && <div className="msg-bubble">{glowMap[m.id] ? renderGlow(m.text, glowMap[m.id]) : m.text}</div>}
                   {m.photo && (expired
                     ? <div className="msg-photo-expired">📷 写真の保存期限が切れました</div>
                     : <img className="msg-photo" src={m.photo.url} alt="" loading="lazy"
@@ -1739,6 +1921,10 @@ function WordListRoom({ name, room, onLeave }) {
             </div>
           );
         })}
+      </div>
+      {fxBanner && (
+        <div className="fx-banner" key={fxBanner.key}>{fxBanner.words.join("　/　")}</div>
+      )}
       </div>
 
       <div className="status-line">
