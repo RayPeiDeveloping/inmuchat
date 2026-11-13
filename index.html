@@ -769,7 +769,7 @@ function writeNotifyOff(off) { try { if (off) localStorage.setItem(NOTIFY_OFF_KE
 // ===== Web Push（アプリを閉じていても通知が届くようにする）=====
 // 下の2つを、手順で作った自分の値に書き換える。
 const PUSH_API = "https://inchaworker.eisas12m08y.workers.dev";
-const VAPID_PUBLIC_KEY = "BG5OX6a1SYL5o2A78BkKPmRES8D5o2UE1EyWj_Xu-VSX2BUygm9vglYr0R9PkRIz_2e5lQo1YSKvDsjm9t3eaTg";
+const VAPID_PUBLIC_KEY = "BDRaT_LWtG84CfmD4kac93FPHbVdsqNXZRJXIZz5MiSE93jn712zyJoTi1sxvvTZp9DAY7Hst0RZIGpHEhF2w9g";
 const DEVICE_ID_KEY = "tango_device_id";
 
 function pushReady() {
@@ -804,6 +804,13 @@ async function subscribePush(topic) {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    // 以前の鍵で作った購読が残っていると、新しい鍵では送れないので、作り直す
+    if (sub && sub.options && sub.options.applicationServerKey) {
+      const cur = new Uint8Array(sub.options.applicationServerKey);
+      const want = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      const same = cur.length === want.length && cur.every((v, i) => v === want[i]);
+      if (!same) { try { await sub.unsubscribe(); } catch (e) {} sub = null; }
+    }
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
